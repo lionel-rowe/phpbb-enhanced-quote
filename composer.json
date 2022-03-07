@@ -1,0 +1,25 @@
+{
+	"name": "luoning/partialquote",
+	"type": "phpbb-extension",
+	"description": "Partial Quote",
+	"homepage": "https://github.com/lionel-rowe/phpbb-partial-quote",
+	"version": "1.0.0-dev",
+	"time": "2022-03-07",
+	"license": "GPL-2.0-only",
+	"authors": [
+		{
+			"name": "Lionel Rowe",
+			"homepage": "https://github.com/lionel-rowe"
+		}
+	],
+	"require": {
+		"php": ">=5.4",
+		"composer/installers": "~1.0"
+	},
+	"extra": {
+		"display-name": "Partial Quote",
+		"soft-require": {
+			"phpbb/phpbb": ">=3.2.0,<4.0.0@dev"
+		}
+	}
+}
