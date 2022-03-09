@@ -3,8 +3,8 @@
 	"type": "phpbb-extension",
 	"description": "Partial Quote",
 	"homepage": "https://github.com/lionel-rowe/phpbb-partial-quote",
-	"version": "1.0.0-dev",
-	"time": "2022-03-07",
+	"version": "0.1.0-alpha",
+	"time": "2022-03-09",
 	"license": "GPL-2.0-only",
 	"authors": [
 		{
