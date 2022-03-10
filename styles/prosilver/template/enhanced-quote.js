@@ -1,6 +1,15 @@
 ;(() => {
 	/* ===== common ===== */
 
+	/** @type {?HTMLTextAreaElement} */
+	const $message = document.querySelector('#message')
+
+	/**
+	 * @param {HTMLTextAreaElement} $message
+	 * @returns {{ start: number, end: number }}
+	 */
+	const getCaretPosition = ($message) => window.getCaretPosition($message)
+
 	/**
 	 * prefer multiline quotes for consistency and readability
 	 *
@@ -255,18 +264,6 @@
 		return content
 	}
 
-	/**
-	 * @param {string} selectedText
-	 * @param {PostInfo} postInfo
-	 */
-	const insertQuoteFromSamePagePost = (selectedText, postInfo) => {
-		const content = getQuoteFromSamePagePost(selectedText, postInfo)
-
-		window.insert_text(
-			coerceToMultiLine(window.generateQuote(content, postInfo)),
-		)
-	}
-
 	for (const eventType of ['mouseover', 'click']) {
 		document.body.addEventListener(eventType, (e) => {
 			/** @type {HTMLAnchorElement} */
@@ -281,9 +278,29 @@
 
 					const postInfo = getPostInfoForSamePageQuoteLink(link)
 
-					if (postInfo && e.type === 'click') {
+					if ($message && postInfo && e.type === 'click') {
 						// is same-page quote button
 						e.preventDefault()
+
+						const caret = getCaretPosition($message)
+
+						const before = $message.value.slice(
+							0,
+							getCaretPosition($message).start,
+						)
+						const after = $message.value.slice(
+							getCaretPosition($message).end,
+						)
+
+						const startPaddingLength =
+							caret.start === 0
+								? 0
+								: Math.max(0, 2 - before.match(/\n+$/)?.[0].length)
+
+						const endPaddingLength =
+							caret.end === $message.value.length
+								? 0
+								: Math.max(0, 2 - after.match(/^\n+/)?.[0].length)
 
 						const content = getQuoteFromSamePagePost(
 							selectedText,
@@ -291,9 +308,11 @@
 						)
 
 						window.insert_text(
-							coerceToMultiLine(
-								window.generateQuote(content, postInfo),
-							),
+							'\n'.repeat(startPaddingLength) +
+								coerceToMultiLine(
+									window.generateQuote(content, postInfo),
+								) +
+								'\n'.repeat(endPaddingLength),
 						)
 					} else {
 						if (
@@ -314,20 +333,20 @@
 							}
 
 							/** @type {?HTMLAnchorElement} */
-							const quoteBtn = [
+							const $quoteBtn = [
 								...post.querySelectorAll('a[href]'),
 							].find((x) => isQuoteUrl(new URL(x.href)))
 
 							if (
-								quoteBtn &&
+								$quoteBtn &&
 								checkSelectionForQuoteBtn(
 									selection,
-									quoteBtn,
+									$quoteBtn,
 								) &&
 								selectedText
 							) {
 								const postId = parseInt(
-									new URL(quoteBtn.href).searchParams.get(
+									new URL($quoteBtn.href).searchParams.get(
 										'p',
 									),
 								)
@@ -372,11 +391,14 @@
 		)
 
 	const currentUrl = new URL(window.location.href)
-	const $message = document.querySelector('#message')
+
 	const postId = currentUrl.searchParams.get('post-id')
 	const selectedText = currentUrl.searchParams.get('selected-text')
 
 	if ($message && isQuoteUrl(currentUrl)) {
+		/** @type {string} */
+		let quote
+
 		if (postId && selectedText) {
 			const $post = document
 				.querySelector(`#message_${postId}`)
@@ -397,13 +419,22 @@
 
 			const postInfo = getPostInfoForSamePageQuoteLink($quoteBtn)
 
-			insertQuoteFromSamePagePost(selectedText, postInfo)
+			const content = getQuoteFromSamePagePost(selectedText, postInfo)
+
+			quote =
+				coerceToMultiLine(window.generateQuote(content, postInfo)) +
+				'\n\n'
 		} else if (selectedText) {
-			$message.textContent =
-				quoteToPartial($message.textContent, selectedText) + '\n\n'
+			quote = quoteToPartial($message.textContent, selectedText) + '\n\n'
 		} else {
-			$message.textContent =
-				coerceToMultiLine($message.textContent) + '\n\n'
+			quote = quoteMatcher.test($message.textContent)
+				? coerceToMultiLine($message.textContent) + '\n\n'
+				: $message.textContent
 		}
+
+		// call window.insert_text, even if quote is blank,
+		// to make sure $message always focused on page load
+		$message.textContent = ''
+		window.insert_text(quote)
 	}
 })()

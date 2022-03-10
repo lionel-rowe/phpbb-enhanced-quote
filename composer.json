@@ -1,9 +1,9 @@
 {
-	"name": "luoning/partialquote",
+	"name": "luoning/enhancedquote",
 	"type": "phpbb-extension",
-	"description": "Partial Quote",
-	"homepage": "https://github.com/lionel-rowe/phpbb-partial-quote",
-	"version": "0.1.1-alpha",
+	"description": "Enhanced Quote",
+	"homepage": "https://github.com/lionel-rowe/phpbb-enhanced-quote",
+	"version": "0.1.2-alpha",
 	"time": "2022-03-09",
 	"license": "GPL-2.0-only",
 	"authors": [
@@ -17,7 +17,7 @@
 		"composer/installers": "~1.0"
 	},
 	"extra": {
-		"display-name": "Partial Quote",
+		"display-name": "Enhanced Quote",
 		"soft-require": {
 			"phpbb/phpbb": ">=3.2.0,<4.0.0@dev"
 		}
