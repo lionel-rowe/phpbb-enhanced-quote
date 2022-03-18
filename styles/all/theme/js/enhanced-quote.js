@@ -28,13 +28,20 @@
 		url.pathname.endsWith('/posting.php') &&
 		['reply', 'quote'].includes(url.searchParams.get('mode'))
 
-	const managedParams = {
-		post_id: 'post_id',
-		user_id: 'user_id',
-		author: 'author',
-		time: 'time',
-		selected_text: 'selected_text',
-	}
+	const _managedParams = /** @type {const} */ ([
+		'post_id',
+		'user_id',
+		'author',
+		'time',
+		'selected_text',
+	])
+
+	/**
+	 * @type {{ [key in (typeof _managedParams)[number]]: key }}
+	 */
+	const managedParams = Object.fromEntries(
+		_managedParams.map((str) => [str, str]),
+	)
 
 	/** @param {URL} url */
 	const removeAllManagedParams = (url) => {
@@ -43,9 +50,11 @@
 		}
 	}
 
+	/** @typedef {Partial<Record<keyof typeof managedParams, string>>} ManagedParamsPartial */
+
 	/**
 	 * @param {URL} url
-	 * @returns {typeof managedParams}
+	 * @returns {ManagedParamsPartial}
 	 */
 	const getAllManagedParams = (url) => {
 		return Object.fromEntries(
@@ -60,13 +69,13 @@
 	 * @param {URL} url
 	 * @param {Selection} selection
 	 */
-	const mutateUrlFromSelection = (url, selection) => {
+	const getParamsFromSelection = (selection) => {
 		const selected_text = selection.toString()
 
 		const post = selection.anchorNode?.parentElement.closest('.post')
 
 		if (!post) {
-			return
+			return null
 		}
 
 		/** @type {?HTMLAnchorElement} */
@@ -80,14 +89,6 @@
 		/** @type {?HTMLTimeElement} */
 		const $time = post.querySelector('time')
 
-		console.log(
-			$quoteBtn,
-			checkSelectionForQuoteBtn(selection, $quoteBtn),
-			selected_text,
-			$time,
-			$author,
-		)
-
 		if (
 			$quoteBtn &&
 			checkSelectionForQuoteBtn(selection, $quoteBtn) &&
@@ -98,21 +99,21 @@
 			const post_id = parseInt(
 				new URL($quoteBtn.href).searchParams.get('p'),
 			)
-			const user_id = parseInt(new URL($author.href).searchParams.get('u'))
+			const user_id = parseInt(
+				new URL($author.href).searchParams.get('u'),
+			)
 			const author = $author.textContent.trim()
 			const time = Math.floor(new Date($time.dateTime) / 1000)
 
-			for (const [k, v] of Object.entries({
+			return {
 				post_id,
 				user_id,
 				author,
 				time,
 				selected_text,
-			})) {
-				url.searchParams.set(managedParams[k], v)
 			}
 		} else {
-			removeAllManagedParams(url)
+			return null
 		}
 	}
 
@@ -259,7 +260,7 @@
 	}
 
 	/**
-	 * @param {{ anchorNode: Node, focusNode: Node }}
+	 * @param {Selection} selection
 	 * @param {HTMLAnchorElement} quoteBtn
 	 */
 	const checkSelectionForQuoteBtn = ({ anchorNode, focusNode }, quoteBtn) =>
@@ -282,10 +283,12 @@
 	 * @type {WeakMap<HTMLAnchorElement, PostInfo>} */
 	const attrsForLinks = new WeakMap()
 
-	/** @param {HTMLAnchorElement} link */
-	const getPostInfoForSamePageQuoteLink = (link) => {
-		const samePageQuoteHandler = link.getAttribute('onclick')
-		const cached = attrsForLinks.get(link)
+	/**
+	 * @param {HTMLAnchorElement} $link
+	 */
+	const getPostInfoForSamePageQuoteLink = ($link) => {
+		const samePageQuoteHandler = $link.getAttribute('onclick')
+		const cached = attrsForLinks.get($link)
 
 		if (cached || samePageQuoteHandler) {
 			// is same-page quote button
@@ -308,34 +311,41 @@
 			 * 	number,
 			 * 	string,
 			 * 	string,
-			 * 	Omit<PostInfo, 'author'>
+			 * 	{ post_id: number, time: number, user_id: number }
 			 * ]}
-			 *
-			 * eslint-disable-next-line no-eval
 			 */
+			// eslint-disable-next-line no-eval
 			const [_postId, author, _wrote, attrs] = eval(`[${paramStr}]`)
 
 			/** @type {PostInfo} */
-			const result = { ...attrs, author }
+			const result = {
+				post_id: String(attrs.post_id),
+				time: String(attrs.time),
+				user_id: String(attrs.user_id),
+				author,
+			}
 
 			if (author && attrs) {
-				attrsForLinks.set(link, { ...attrs, author })
-				link.removeAttribute('onclick')
+				attrsForLinks.set($link, { ...result, author })
+				$link.removeAttribute('onclick')
 
 				return result
 			} else {
-				return
+				return null
 			}
 		}
 
-		return
+		return null
 	}
 
 	/**
-	 * @param {string} selectedText
+	 * @param {Selection} selection
 	 * @param {PostInfo} postInfo
+	 * @param {HTMLAnchorElement} $link
 	 */
-	const getQuoteFromSamePagePost = (selectedText, postInfo) => {
+	const getQuoteFromSamePagePost = (selection, postInfo, $link) => {
+		const selected_text = selection.toString()
+
 		const $richText = document.querySelector(`#message_${postInfo.post_id}`)
 
 		const display = $richText.style.display
@@ -345,9 +355,10 @@
 		$richText.style.display = display // revert
 
 		/** @type {string} */
-		const content = selectedText.trim()
-			? matchRichTextFromPlain(richText, selectedText)
-			: richText
+		const content =
+			selected_text.trim() && checkSelectionForQuoteBtn(selection, $link)
+				? matchRichTextFromPlain(richText, selected_text)
+				: richText
 
 		return content
 	}
@@ -355,20 +366,22 @@
 	for (const eventType of ['mouseover', 'click']) {
 		document.body.addEventListener(eventType, (e) => {
 			/** @type {HTMLAnchorElement} */
-			const link = e.target.closest(selector)
+			const $link = e.target.closest(selector)
 
-			if (link) {
-				const url = new URL(link.href)
+			if ($link) {
+				const url = new URL($link.href)
 				const selection = window.getSelection()
 
 				if (selection && isQuoteUrl(url)) {
-					const selectedText = selection.toString()
+					const selected_text = selection.toString()
 
-					const postInfo = getPostInfoForSamePageQuoteLink(link)
+					const postInfo = getPostInfoForSamePageQuoteLink($link)
 
 					if ($message && postInfo && e.type === 'click') {
 						// is same-page quote button
 						e.preventDefault()
+						e.stopImmediatePropagation()
+						e.stopPropagation()
 
 						const caret = getCaretPosition($message)
 
@@ -385,20 +398,18 @@
 								? 0
 								: Math.max(
 										0,
-										2 - before.match(/\n+$/)?.[0].length,
+										2 - before.match(/\n*$/)[0].length,
 								  )
 
 						const endPaddingLength =
 							caret.end === $message.value.length
 								? 0
-								: Math.max(
-										0,
-										2 - after.match(/^\n+/)?.[0].length,
-								  )
+								: Math.max(0, 2 - after.match(/^\n*/)[0].length)
 
 						const content = getQuoteFromSamePagePost(
-							selectedText,
+							selection,
 							postInfo,
+							$link,
 						)
 
 						window.insert_text(
@@ -410,18 +421,26 @@
 						)
 					} else {
 						if (
-							checkSelectionForQuoteBtn(selection, link) &&
-							selectedText
+							checkSelectionForQuoteBtn(selection, $link) &&
+							selected_text
 						) {
-							url.searchParams.set('selected_text', selectedText)
-						} else if (!link.closest('.post')) {
+							url.searchParams.set('selected_text', selected_text)
+						} else if (!$link.closest('.post')) {
 							// is "Reply" button at bottom of thread
-							mutateUrlFromSelection(url, selection)
+							const params = getParamsFromSelection(selection)
+
+							if (params) {
+								for (const [k, v] of Object.entries(params)) {
+									url.searchParams.set(managedParams[k], v)
+								}
+							} else {
+								removeAllManagedParams(url)
+							}
 						} else {
 							removeAllManagedParams(url)
 						}
 
-						link.href = url.href
+						$link.href = url.href
 					}
 				}
 			}
@@ -449,18 +468,18 @@
 
 	const currentUrl = new URL(window.location.href)
 
-	const { post_id, user_id, author, time, selected_text } = getAllManagedParams(currentUrl)
+	const params = getAllManagedParams(currentUrl)
+	const { selected_text, ...postInfo } = params
 
 	if ($message && isQuoteUrl(currentUrl)) {
 		/** @type {string} */
 		let quote
 
-		if (post_id && user_id && author && time && selected_text) {
-			const postInfo = { post_id, user_id, author, time }
-
+		if (Object.values(managedParams).every((v) => params[v])) {
 			quote =
-				coerceToMultiLine(window.generateQuote(selected_text, postInfo)) +
-				'\n\n'
+				coerceToMultiLine(
+					window.generateQuote(selected_text, postInfo),
+				) + '\n\n'
 		} else if (selected_text) {
 			quote = quoteToPartial($message.textContent, selected_text) + '\n\n'
 		} else {
