@@ -79,12 +79,16 @@
 		}
 
 		/** @type {?HTMLAnchorElement} */
-		const $quoteBtn = [...post.querySelectorAll('a[href]')].find((x) =>
-			isQuoteUrl(new URL(x.href)),
+		const $quoteBtn = [...post.querySelectorAll('a[href]')].find(($el) =>
+			isQuoteUrl(new URL($el.href)),
 		)
 
 		/** @type {?HTMLAnchorElement} */
-		const $author = post.querySelector('a[href*="/memberlist.php?"]')
+		const $author = [...post.querySelectorAll('a[href]')].find(
+			($el) =>
+				new URL($el.href).pathname.endsWith('/memberlist.php') &&
+				!$el.innerHTML.includes('<'), // no child elements, just text
+		)
 
 		/** @type {?HTMLTimeElement} */
 		const $time = post.querySelector('time')
@@ -426,7 +430,7 @@
 						) {
 							url.searchParams.set('selected_text', selected_text)
 						} else if (!$link.closest('.post')) {
-							// is "Reply" button at bottom of thread
+							// is action-bar "Reply" button at top or bottom of thread
 							const params = getParamsFromSelection(selection)
 
 							if (params) {
@@ -491,6 +495,8 @@
 		// call window.insert_text, even if quote is blank,
 		// to make sure $message always focused on page load
 		$message.textContent = ''
-		window.insert_text(quote)
+		// if we ended up with just whitespace due to e.g. missing params,
+		// then just insert empty string
+		window.insert_text(quote.trim() ? quote : '')
 	}
 })()
