@@ -28,6 +28,94 @@
 		url.pathname.endsWith('/posting.php') &&
 		['reply', 'quote'].includes(url.searchParams.get('mode'))
 
+	const managedParams = {
+		post_id: 'post_id',
+		user_id: 'user_id',
+		author: 'author',
+		time: 'time',
+		selected_text: 'selected_text',
+	}
+
+	/** @param {URL} url */
+	const removeAllManagedParams = (url) => {
+		for (const p of Object.values(managedParams)) {
+			url.searchParams.delete(p)
+		}
+	}
+
+	/**
+	 * @param {URL} url
+	 * @returns {typeof managedParams}
+	 */
+	const getAllManagedParams = (url) => {
+		return Object.fromEntries(
+			Object.entries(managedParams).map(([k, v]) => [
+				k,
+				url.searchParams.get(v),
+			]),
+		)
+	}
+
+	/**
+	 * @param {URL} url
+	 * @param {Selection} selection
+	 */
+	const mutateUrlFromSelection = (url, selection) => {
+		const selected_text = selection.toString()
+
+		const post = selection.anchorNode?.parentElement.closest('.post')
+
+		if (!post) {
+			return
+		}
+
+		/** @type {?HTMLAnchorElement} */
+		const $quoteBtn = [...post.querySelectorAll('a[href]')].find((x) =>
+			isQuoteUrl(new URL(x.href)),
+		)
+
+		/** @type {?HTMLAnchorElement} */
+		const $author = post.querySelector('a[href*="/memberlist.php?"]')
+
+		/** @type {?HTMLTimeElement} */
+		const $time = post.querySelector('time')
+
+		console.log(
+			$quoteBtn,
+			checkSelectionForQuoteBtn(selection, $quoteBtn),
+			selected_text,
+			$time,
+			$author,
+		)
+
+		if (
+			$quoteBtn &&
+			checkSelectionForQuoteBtn(selection, $quoteBtn) &&
+			selected_text &&
+			$time &&
+			$author
+		) {
+			const post_id = parseInt(
+				new URL($quoteBtn.href).searchParams.get('p'),
+			)
+			const user_id = parseInt(new URL($author.href).searchParams.get('u'))
+			const author = $author.textContent.trim()
+			const time = Math.floor(new Date($time.dateTime) / 1000)
+
+			for (const [k, v] of Object.entries({
+				post_id,
+				user_id,
+				author,
+				time,
+				selected_text,
+			})) {
+				url.searchParams.set(managedParams[k], v)
+			}
+		} else {
+			removeAllManagedParams(url)
+		}
+	}
+
 	/**
 	 * @param {string} richText
 	 * @param {string} plainFragment
@@ -295,12 +383,18 @@
 						const startPaddingLength =
 							caret.start === 0
 								? 0
-								: Math.max(0, 2 - before.match(/\n+$/)?.[0].length)
+								: Math.max(
+										0,
+										2 - before.match(/\n+$/)?.[0].length,
+								  )
 
 						const endPaddingLength =
 							caret.end === $message.value.length
 								? 0
-								: Math.max(0, 2 - after.match(/^\n+/)?.[0].length)
+								: Math.max(
+										0,
+										2 - after.match(/^\n+/)?.[0].length,
+								  )
 
 						const content = getQuoteFromSamePagePost(
 							selectedText,
@@ -319,49 +413,12 @@
 							checkSelectionForQuoteBtn(selection, link) &&
 							selectedText
 						) {
-							url.searchParams.set('selected-text', selectedText)
+							url.searchParams.set('selected_text', selectedText)
 						} else if (!link.closest('.post')) {
 							// is "Reply" button at bottom of thread
-
-							const post =
-								selection.anchorNode?.parentElement.closest(
-									'.post',
-								)
-
-							if (!post) {
-								return
-							}
-
-							/** @type {?HTMLAnchorElement} */
-							const $quoteBtn = [
-								...post.querySelectorAll('a[href]'),
-							].find((x) => isQuoteUrl(new URL(x.href)))
-
-							if (
-								$quoteBtn &&
-								checkSelectionForQuoteBtn(
-									selection,
-									$quoteBtn,
-								) &&
-								selectedText
-							) {
-								const postId = parseInt(
-									new URL($quoteBtn.href).searchParams.get(
-										'p',
-									),
-								)
-
-								url.searchParams.set('post-id', postId)
-								url.searchParams.set(
-									'selected-text',
-									selectedText,
-								)
-							} else {
-								url.searchParams.delete('post-id')
-								url.searchParams.delete('selected-text')
-							}
+							mutateUrlFromSelection(url, selection)
 						} else {
-							url.searchParams.delete('selected-text')
+							removeAllManagedParams(url)
 						}
 
 						link.href = url.href
@@ -392,40 +449,20 @@
 
 	const currentUrl = new URL(window.location.href)
 
-	const postId = currentUrl.searchParams.get('post-id')
-	const selectedText = currentUrl.searchParams.get('selected-text')
+	const { post_id, user_id, author, time, selected_text } = getAllManagedParams(currentUrl)
 
 	if ($message && isQuoteUrl(currentUrl)) {
 		/** @type {string} */
 		let quote
 
-		if (postId && selectedText) {
-			const $post = document
-				.querySelector(`#message_${postId}`)
-				?.closest('.post')
-
-			if (!$post) {
-				return
-			}
-
-			/** @type {?HTMLAnchorElement} */
-			const $quoteBtn = [...$post.querySelectorAll('a[href]')].find((x) =>
-				isQuoteUrl(new URL(x.href)),
-			)
-
-			if (!$quoteBtn) {
-				return
-			}
-
-			const postInfo = getPostInfoForSamePageQuoteLink($quoteBtn)
-
-			const content = getQuoteFromSamePagePost(selectedText, postInfo)
+		if (post_id && user_id && author && time && selected_text) {
+			const postInfo = { post_id, user_id, author, time }
 
 			quote =
-				coerceToMultiLine(window.generateQuote(content, postInfo)) +
+				coerceToMultiLine(window.generateQuote(selected_text, postInfo)) +
 				'\n\n'
-		} else if (selectedText) {
-			quote = quoteToPartial($message.textContent, selectedText) + '\n\n'
+		} else if (selected_text) {
+			quote = quoteToPartial($message.textContent, selected_text) + '\n\n'
 		} else {
 			quote = quoteMatcher.test($message.textContent)
 				? coerceToMultiLine($message.textContent) + '\n\n'
