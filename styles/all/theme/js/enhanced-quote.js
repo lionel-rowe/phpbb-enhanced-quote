@@ -1,14 +1,19 @@
 ;(() => {
 	/* ===== common ===== */
 
+	/**
+	 * phpBB utilities exposed on `window` by `assets/javascript/editor.js`
+	 *
+	 * @type {{
+	 * 	getCaretPosition: ($textarea: HTMLTextAreaElement) =>
+	 * 		({ start: number, end: number }),
+	 * 	insert_text: (text: string, spaces?: boolean, popup?: boolean) => void,
+	 * }}
+	 */
+	const { getCaretPosition, insert_text } = window
+
 	/** @type {?HTMLTextAreaElement} */
 	const $message = document.querySelector('#message')
-
-	/**
-	 * @param {HTMLTextAreaElement} $message
-	 * @returns {{ start: number, end: number }}
-	 */
-	const getCaretPosition = ($message) => window.getCaretPosition($message)
 
 	/**
 	 * prefer multiline quotes for consistency and readability
@@ -121,14 +126,46 @@
 		}
 	}
 
+	/** @param {string} str */
+	const numMatches =
+		(str) =>
+		/** @param {RegExp} matcher */
+		(matcher) =>
+			(str.match(matcher) ?? []).length
+
+	/** @param {string} str */
+	const sanityCheck = (str) => {
+		const numOf = numMatches(str)
+
+		return (
+			// balanced parens, ignoring emoticons
+			numOf(/(?<!;:-)\(/g) === numOf(/\)/g) &&
+			// balanced square brackets, ignoring emoticons
+			numOf(/(?<!;:-)\[/g) === numOf(/\]/g) &&
+			// bold/italic md
+			numOf(/[_*]{3}\p{L}/gu) === numOf(/\p{L}[_*]{3}/gu) &&
+			numOf(/[_*]{2}\p{L}/gu) === numOf(/\p{L}[_*]{2}/gu) &&
+			numOf(/[_*]\p{L}/gu) === numOf(/\p{L}[_*]/gu) &&
+			// strikethrough md
+			numOf(/~~\p{L}/gu) === numOf(/\p{L}~~/gu)
+		)
+	}
+
 	/**
 	 * @param {string} richText
 	 * @param {string} plainFragment
 	 */
 	const matchRichTextFromPlain = (richText, plainFragment) => {
 		try {
-			// [b], [/b], [url=...], [tag attr=...]
-			const _bbCodeTag = /\[[^\]\n]+\](?!\()/u.source
+			// [b], [url=...], [tag attr=...]
+			const _bbCodeStartTag = /\[[^\/\]\n]+\](?!\()/u.source
+			// [/b], [/url], [/tag]
+			const _bbCodeEndTag = /\[\/\w+\](?!\()/u.source
+
+			const _bbCodeTag = new RegExp(
+				`(?:${_bbCodeStartTag}|${_bbCodeEndTag})`,
+				'u',
+			).source
 			// ](https://example.com), latter half of [text](https://example.com) or ![alt](https://example.com/img.jpg)
 			const _mdUrl = /\]\([^\)]+\)/u.source
 			const _nonAlphaNum = /[^\p{L}\p{N}]/u.source
@@ -137,16 +174,21 @@
 				`(?:${_bbCodeTag}|${_mdUrl}|${_nonAlphaNum})+`,
 				'gu',
 			)
-			const _bbCodeTagOrPunctuation = new RegExp(
-				String.raw`(?:${_bbCodeTag}|\p{P})*`,
+
+			const _includeAtStart = new RegExp(
+				String.raw`(?:${_bbCodeStartTag}|\p{P})*`,
+				'gu',
+			).source
+			const _includeAtEnd = new RegExp(
+				String.raw`(?:${_bbCodeEndTag}|${_mdUrl}|[_*~]+)*`,
 				'gu',
 			).source
 
 			const richTextMatcher = new RegExp(
 				[
-					_bbCodeTagOrPunctuation,
+					_includeAtStart,
 					plainFragment.replace(ignorer, ignorer.source),
-					_bbCodeTagOrPunctuation,
+					_includeAtEnd,
 				].join(''),
 				'u',
 			)
@@ -241,10 +283,11 @@
 				matched = trailingPunctuation + matched
 			}
 
-			return matched
+			const result = matched
 				.replace(trailingMdOnOwnLine, '')
 				.replace(leadingMdOnOwnLine, '')
-				.trim()
+
+			return (sanityCheck(result) ? result : plainFragment).trim()
 		} catch (e) {
 			console.error(e)
 
@@ -416,7 +459,7 @@
 							$link,
 						)
 
-						window.insert_text(
+						insert_text(
 							'\n'.repeat(startPaddingLength) +
 								coerceToMultiLine(
 									window.generateQuote(content, postInfo),
@@ -492,11 +535,11 @@
 				: $message.textContent
 		}
 
-		// call window.insert_text, even if quote is blank,
+		// call insert_text, even if quote is blank,
 		// to make sure $message always focused on page load
 		$message.textContent = ''
 		// if we ended up with just whitespace due to e.g. missing params,
 		// then just insert empty string
-		window.insert_text(quote.trim() ? quote : '')
+		insert_text(quote.trim() ? quote : '')
 	}
 })()
